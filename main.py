@@ -1,0 +1,143 @@
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any, AsyncGenerator
+from openai import OpenAI
+import os
+from dotenv import load_dotenv
+import asyncio
+import time
+import logging
+from assistant_manager import AssistantManager
+import json
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
+
+# Initialize FastAPI app
+app = FastAPI()
+
+# Add CORS middleware with specific origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://*.webflow.io",  # Webflow preview domains
+        "https://*.webflow.com", # Webflow editor
+        os.getenv("PRODUCTION_DOMAIN", "http://localhost:3000")  # Your production domain
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=3600  # Cache preflight requests for 1 hour
+)
+
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Model configuration
+MODEL_CONFIG = {
+    "temperature": 0.7,
+    "top_p": 0.9,
+}
+
+# Assistant configuration
+ASSISTANT_CONFIG = {
+    "assistant_id": os.getenv("OPENAI_ASSISTANT_ID"),
+    "model": "gpt-4-turbo-preview",
+}
+
+# Initialize AssistantManager
+assistant_manager = AssistantManager()
+
+class ChatRequest(BaseModel):
+    message: str
+    user_id: str
+    thread_id: Optional[str] = None
+
+@app.get("/api/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "assistant_id": os.getenv("OPENAI_ASSISTANT_ID")
+    }
+
+@app.post("/api/chat")
+async def chat_with_assistant(request: ChatRequest):
+    """Chat with the assistant"""
+    try:
+        response = await assistant_manager.send_message(
+            user_id=request.user_id,
+            message=request.message
+        )
+        return response
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/chat/history/{user_id}")
+async def get_chat_history(
+    user_id: str,
+    limit: int = Query(default=100, le=1000, gt=0)
+):
+    """Get conversation history for a user"""
+    try:
+        history = await assistant_manager.get_conversation_history(
+            user_id=user_id,
+            limit=limit
+        )
+        return history
+    except Exception as e:
+        logger.error(f"Error getting chat history: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/chat/message/{user_id}/{message_id}")
+async def get_message(user_id: str, message_id: str):
+    """Get a specific message from a user's conversation"""
+    try:
+        message = await assistant_manager.get_message_by_id(
+            user_id=user_id,
+            message_id=message_id
+        )
+        return message
+    except Exception as e:
+        logger.error(f"Error getting message: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/thread/{user_id}")
+async def delete_user_thread(user_id: str):
+    """Delete a user's thread"""
+    try:
+        await assistant_manager.delete_thread(user_id)
+        return {"status": "success", "message": f"Thread deleted for user {user_id}"}
+    except Exception as e:
+        logger.error(f"Error deleting thread: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat/stream")
+async def chat_with_assistant_stream(request: ChatRequest):
+    """Chat with the assistant with streaming response"""
+    try:
+        async def generate_responses():
+            async for response in assistant_manager.send_message_stream(
+                user_id=request.user_id,
+                message=request.message
+            ):
+                yield f"data: {json.dumps(response)}\n\n"
+                
+        return StreamingResponse(
+            generate_responses(),
+            media_type="text/event-stream"
+        )
+    except Exception as e:
+        logger.error(f"Error in chat stream endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# For local development
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000) 

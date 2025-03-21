@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laila Self Guide Chat</title>
+    <style>
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .chat-messages {
+            height: 60vh;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 18px;
+            max-width: 80%;
+            line-height: 1.5;
+        }
+        .user-message {
+            background-color: #dcf8c6;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        .assistant-message {
+            background-color: #ffffff;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .message-input {
+            display: flex;
+            gap: 10px;
+        }
+        .message-input textarea {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 24px;
+            resize: none;
+            font-family: inherit;
+            outline: none;
+        }
+        .message-input button {
+            padding: 0 20px;
+            background-color: #0088ff;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .message-input button:hover {
+            background-color: #0066cc;
+        }
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,.1);
+            border-radius: 50%;
+            border-top-color: #0088ff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .typing-indicator {
+            display: none;
+            padding: 10px;
+            font-style: italic;
+            color: #666;
+        }
+        .message-content {
+            white-space: pre-wrap;
+        }
+        .history-btn {
+            margin-bottom: 15px;
+            padding: 8px 15px;
+            background-color: #f0f0f0;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .history-btn:hover {
+            background-color: #e0e0e0;
+        }
+        @media (max-width: 768px) {
+            .message {
+                max-width: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- This will be embedded in the Webflow members-only area -->
+    <div class="chat-container">
+        <h2>Laila Self Guide Chat</h2>
+        <p>Ask questions about Haven, Flow, Seeker, Steady, or anything about your Laila Self journey.</p>
+        
+        <button id="view-history" class="history-btn">View Chat History</button>
+        
+        <div class="chat-messages" id="chat-messages">
+            <!-- Messages will appear here -->
+            <div class="message assistant-message">
+                <div class="message-content">Hello! I'm your Laila Self Guide. How can I assist you on your journey today?</div>
+            </div>
+        </div>
+        
+        <div class="typing-indicator" id="typing-indicator">
+            <span class="loader"></span> Your Laila Self Guide is responding...
+        </div>
+        
+        <div class="message-input">
+            <textarea id="user-input" placeholder="Type your message here..." rows="2"></textarea>
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        // API endpoint (change this to your deployed Vercel URL)
+        const API_URL = 'https://your-vercel-deployment-url.vercel.app';
+        
+        // DOM elements
+        const messagesContainer = document.getElementById('chat-messages');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const viewHistoryButton = document.getElementById('view-history');
+        
+        // Generate a unique user ID or get from Webflow Member
+        let userId = localStorage.getItem('lailaUserId');
+        if (!userId) {
+            // If not in storage, generate and store a new ID
+            userId = 'user_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('lailaUserId', userId);
+        }
+        
+        // Function to add a message to the chat
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = content;
+            
+            messageDiv.appendChild(messageContent);
+            messagesContainer.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Function to send a message to the API
+        async function sendMessage(message) {
+            try {
+                // Show the message in the chat
+                addMessage(message, true);
+                
+                // Show typing indicator
+                typingIndicator.style.display = 'block';
+                
+                // Disable input and send button while waiting
+                userInput.disabled = true;
+                sendButton.disabled = true;
+                
+                // Make the API call
+                const response = await fetch(`${API_URL}/api/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        message: message
+                    })
+                });
+                
+                // Process the response
+                if (response.ok) {
+                    const data = await response.json();
+                    // Add the assistant's response to the chat
+                    addMessage(data.response, false);
+                } else {
+                    // Handle errors
+                    const errorData = await response.json();
+                    console.error('Error:', errorData);
+                    addMessage('Sorry, there was an error processing your request. Please try again later.', false);
+                }
+            } catch (error) {
+                console.error('Network error:', error);
+                addMessage('Sorry, there was a network error. Please check your connection and try again.', false);
+            } finally {
+                // Hide typing indicator and re-enable input
+                typingIndicator.style.display = 'none';
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                userInput.focus();
+            }
+        }
+        
+        // Function to load chat history
+        async function loadChatHistory() {
+            try {
+                // Show loading in the chat
+                messagesContainer.innerHTML = '<div class="message assistant-message"><div class="message-content">Loading chat history...</div></div>';
+                
+                // Make the API call
+                const response = await fetch(`${API_URL}/api/chat/history/${userId}`);
+                
+                // Process the response
+                if (response.ok) {
+                    const history = await response.json();
+                    
+                    // Clear the messages container
+                    messagesContainer.innerHTML = '';
+                    
+                    if (history.length === 0) {
+                        // If no history, show welcome message
+                        addMessage("Hello! I'm your Laila Self Guide. How can I assist you on your journey today?", false);
+                    } else {
+                        // Add each message from the history
+                        history.forEach(msg => {
+                            addMessage(msg.content, msg.role === 'user');
+                        });
+                    }
+                } else {
+                    // Handle errors
+                    messagesContainer.innerHTML = '';
+                    addMessage("Hello! I'm your Laila Self Guide. How can I assist you on your journey today?", false);
+                    addMessage("Could not load chat history. Starting a new conversation.", false);
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+                messagesContainer.innerHTML = '';
+                addMessage("Hello! I'm your Laila Self Guide. How can I assist you on your journey today?", false);
+                addMessage("Could not load chat history due to a network error.", false);
+            }
+        }
+        
+        // Event listeners
+        sendButton.addEventListener('click', () => {
+            const message = userInput.value.trim();
+            if (message) {
+                sendMessage(message);
+                userInput.value = '';
+            }
+        });
+        
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendButton.click();
+            }
+        });
+        
+        viewHistoryButton.addEventListener('click', loadChatHistory);
+        
+        // Allow textareas to resize automatically
+        userInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+    </script>
+</body>
+</html> 
