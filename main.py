@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any, AsyncGenerator
 from openai import OpenAI
@@ -21,6 +22,23 @@ load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI()
+
+# Custom exception handlers
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": str(exc)}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error: {str(exc)}")
+    return JSONResponse(
+        status_code=422,
+        content={"error": "Validation error", "detail": str(exc)}
+    )
 
 # Add CORS middleware with all origins allowed for testing
 app.add_middleware(
@@ -72,8 +90,18 @@ async def chat_with_assistant(request: ChatRequest):
         )
         return response
     except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        logger.error(f"Error in chat endpoint: {error_msg}")
+        
+        # Handle different types of errors
+        if "rate limit" in error_msg.lower():
+            raise HTTPException(status_code=429, detail={"error": "rate_limited", "message": "Rate limit exceeded. Please try again later."})
+        elif "quota exceeded" in error_msg.lower():
+            raise HTTPException(status_code=429, detail={"error": "quota_exceeded", "message": "API quota exceeded. Please try again later."})
+        elif "not found" in error_msg.lower():
+            raise HTTPException(status_code=404, detail={"error": "not_found", "message": error_msg})
+        else:
+            raise HTTPException(status_code=500, detail={"error": "server_error", "message": error_msg})
 
 @app.get("/api/chat/history/{user_id}")
 async def get_chat_history(

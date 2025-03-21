@@ -191,14 +191,26 @@
                 
                 // Process the response
                 if (response.ok) {
-                    const data = await response.json();
-                    // Add the assistant's response to the chat
-                    addMessage(data.response, false);
+                    try {
+                        const data = await response.json();
+                        // Add the assistant's response to the chat
+                        addMessage(data.response, false);
+                    } catch (jsonError) {
+                        console.error('Error parsing JSON:', jsonError);
+                        addMessage('Sorry, there was a problem with the server response. Please try again.', false);
+                    }
                 } else {
                     // Handle errors
-                    const errorData = await response.json();
-                    console.error('Error:', errorData);
-                    addMessage('Sorry, there was an error processing your request. Please try again later.', false);
+                    try {
+                        const errorData = await response.json();
+                        console.error('API Error:', errorData);
+                        addMessage('Sorry, there was an error processing your request. Please try again later.', false);
+                    } catch (jsonError) {
+                        console.error('Error parsing error response:', jsonError);
+                        const errorText = await response.text();
+                        console.error('Raw error:', errorText);
+                        addMessage('Sorry, there was a problem with the server. Please try again later.', false);
+                    }
                 }
             } catch (error) {
                 console.error('Network error:', error);

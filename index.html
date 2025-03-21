@@ -164,10 +164,29 @@
                     })
                 });
                 
-                const data = await response.json();
-                messageOutput.textContent = formatResponse(data);
+                // Check if response is OK
+                if (response.ok) {
+                    try {
+                        const data = await response.json();
+                        messageOutput.textContent = formatResponse(data);
+                    } catch (jsonError) {
+                        // Handle non-JSON responses
+                        const textResponse = await response.text();
+                        messageOutput.textContent = `Error parsing JSON: ${jsonError}\nRaw response: ${textResponse}`;
+                    }
+                } else {
+                    // Handle error responses
+                    try {
+                        const errorData = await response.json();
+                        messageOutput.textContent = `Error (${response.status}): ${formatResponse(errorData)}`;
+                    } catch (jsonError) {
+                        // If error response is not JSON
+                        const textResponse = await response.text();
+                        messageOutput.textContent = `Error (${response.status}): ${textResponse}`;
+                    }
+                }
             } catch (error) {
-                messageOutput.textContent = `Error: ${error.message}`;
+                messageOutput.textContent = `Network Error: ${error.message}`;
                 console.error('Send message error:', error);
             }
         });
