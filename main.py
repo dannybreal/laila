@@ -22,14 +22,10 @@ load_dotenv()
 # Initialize FastAPI app
 app = FastAPI()
 
-# Add CORS middleware with specific origins
+# Add CORS middleware with all origins allowed for testing
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://*.webflow.io",  # Webflow preview domains
-        "https://*.webflow.com", # Webflow editor
-        os.getenv("PRODUCTION_DOMAIN", "http://localhost:3000")  # Your production domain
-    ],
+    allow_origins=["*"],  # Allow all origins for testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
