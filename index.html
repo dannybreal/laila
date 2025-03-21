@@ -172,7 +172,8 @@
                     } catch (jsonError) {
                         // Handle non-JSON responses
                         const textResponse = await response.text();
-                        messageOutput.textContent = `Error parsing JSON: ${jsonError}\nRaw response: ${textResponse}`;
+                        messageOutput.textContent = `Error parsing JSON: ${jsonError}\n\nRaw response (first 500 chars):\n${textResponse.substring(0, 500)}`;
+                        console.error('Full raw response:', textResponse);
                     }
                 } else {
                     // Handle error responses
@@ -182,7 +183,8 @@
                     } catch (jsonError) {
                         // If error response is not JSON
                         const textResponse = await response.text();
-                        messageOutput.textContent = `Error (${response.status}): ${textResponse}`;
+                        messageOutput.textContent = `Error (${response.status}): First 500 chars of response:\n${textResponse.substring(0, 500)}`;
+                        console.error('Full error response:', textResponse);
                     }
                 }
             } catch (error) {

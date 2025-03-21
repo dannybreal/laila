@@ -29,7 +29,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {str(exc)}")
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": str(exc)}
+        content={"error": "internal_server_error", "message": str(exc)}
     )
 
 @app.exception_handler(RequestValidationError)
@@ -37,7 +37,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.error(f"Validation error: {str(exc)}")
     return JSONResponse(
         status_code=422,
-        content={"error": "Validation error", "detail": str(exc)}
+        content={"error": "validation_error", "message": str(exc)}
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.detail if isinstance(exc.detail, dict) else {"error": "http_error", "message": str(exc.detail)}
     )
 
 # Add CORS middleware with all origins allowed for testing
@@ -72,6 +79,23 @@ class ChatRequest(BaseModel):
     message: str
     user_id: str
     thread_id: Optional[str] = None
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "name": "Laila Self API",
+        "version": "1.0.0",
+        "status": "active",
+        "endpoints": [
+            "/api/health",
+            "/api/chat",
+            "/api/chat/history/{user_id}",
+            "/api/chat/message/{user_id}/{message_id}",
+            "/api/thread/{user_id}",
+            "/api/chat/stream"
+        ]
+    }
 
 @app.get("/api/health")
 async def health_check():
@@ -116,8 +140,9 @@ async def get_chat_history(
         )
         return history
     except Exception as e:
-        logger.error(f"Error getting chat history: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        logger.error(f"Error getting chat history: {error_msg}")
+        raise HTTPException(status_code=500, detail={"error": "history_error", "message": error_msg})
 
 @app.get("/api/chat/message/{user_id}/{message_id}")
 async def get_message(user_id: str, message_id: str):
@@ -129,8 +154,9 @@ async def get_message(user_id: str, message_id: str):
         )
         return message
     except Exception as e:
-        logger.error(f"Error getting message: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        logger.error(f"Error getting message: {error_msg}")
+        raise HTTPException(status_code=500, detail={"error": "message_error", "message": error_msg})
 
 @app.delete("/api/thread/{user_id}")
 async def delete_user_thread(user_id: str):
@@ -139,8 +165,9 @@ async def delete_user_thread(user_id: str):
         await assistant_manager.delete_thread(user_id)
         return {"status": "success", "message": f"Thread deleted for user {user_id}"}
     except Exception as e:
-        logger.error(f"Error deleting thread: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        logger.error(f"Error deleting thread: {error_msg}")
+        raise HTTPException(status_code=500, detail={"error": "delete_error", "message": error_msg})
 
 @app.post("/api/chat/stream")
 async def chat_with_assistant_stream(request: ChatRequest):
@@ -158,8 +185,9 @@ async def chat_with_assistant_stream(request: ChatRequest):
             media_type="text/event-stream"
         )
     except Exception as e:
-        logger.error(f"Error in chat stream endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        logger.error(f"Error in chat stream endpoint: {error_msg}")
+        raise HTTPException(status_code=500, detail={"error": "stream_error", "message": error_msg})
 
 # For local development
 if __name__ == "__main__":
