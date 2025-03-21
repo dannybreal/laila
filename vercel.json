@@ -5,7 +5,8 @@
             "src": "main.py",
             "use": "@vercel/python",
             "config": {
-                "runtime": "python3.9"
+                "runtime": "python3.9",
+                "buildCommand": "chmod +x vercel_build.sh && ./vercel_build.sh"
             }
         }
     ],
