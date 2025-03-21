@@ -29,7 +29,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {str(exc)}")
     return JSONResponse(
         status_code=500,
-        content={"error": "internal_server_error", "message": str(exc)}
+        content={"error": "Internal server error", "detail": str(exc)}
     )
 
 @app.exception_handler(RequestValidationError)
@@ -37,14 +37,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.error(f"Validation error: {str(exc)}")
     return JSONResponse(
         status_code=422,
-        content={"error": "validation_error", "message": str(exc)}
-    )
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=exc.detail if isinstance(exc.detail, dict) else {"error": "http_error", "message": str(exc.detail)}
+        content={"error": "Validation error", "detail": str(exc)}
     )
 
 # Add CORS middleware with all origins allowed for testing
@@ -80,29 +73,12 @@ class ChatRequest(BaseModel):
     user_id: str
     thread_id: Optional[str] = None
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "name": "Laila Self API",
-        "version": "1.0.0",
-        "status": "active",
-        "endpoints": [
-            "/api/health",
-            "/api/chat",
-            "/api/chat/history/{user_id}",
-            "/api/chat/message/{user_id}/{message_id}",
-            "/api/thread/{user_id}",
-            "/api/chat/stream"
-        ]
-    }
-
 @app.get("/api/health")
 async def health_check():
-    return {
+    return JSONResponse(content={
         "status": "healthy",
         "assistant_id": os.getenv("OPENAI_ASSISTANT_ID")
-    }
+    })
 
 @app.post("/api/chat")
 async def chat_with_assistant(request: ChatRequest):
@@ -112,20 +88,32 @@ async def chat_with_assistant(request: ChatRequest):
             user_id=request.user_id,
             message=request.message
         )
-        return response
+        return JSONResponse(content=response)
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Error in chat endpoint: {error_msg}")
         
         # Handle different types of errors
         if "rate limit" in error_msg.lower():
-            raise HTTPException(status_code=429, detail={"error": "rate_limited", "message": "Rate limit exceeded. Please try again later."})
+            return JSONResponse(
+                status_code=429, 
+                content={"error": "rate_limited", "message": "Rate limit exceeded. Please try again later."}
+            )
         elif "quota exceeded" in error_msg.lower():
-            raise HTTPException(status_code=429, detail={"error": "quota_exceeded", "message": "API quota exceeded. Please try again later."})
+            return JSONResponse(
+                status_code=429, 
+                content={"error": "quota_exceeded", "message": "API quota exceeded. Please try again later."}
+            )
         elif "not found" in error_msg.lower():
-            raise HTTPException(status_code=404, detail={"error": "not_found", "message": error_msg})
+            return JSONResponse(
+                status_code=404, 
+                content={"error": "not_found", "message": error_msg}
+            )
         else:
-            raise HTTPException(status_code=500, detail={"error": "server_error", "message": error_msg})
+            return JSONResponse(
+                status_code=500, 
+                content={"error": "server_error", "message": error_msg}
+            )
 
 @app.get("/api/chat/history/{user_id}")
 async def get_chat_history(
@@ -138,11 +126,13 @@ async def get_chat_history(
             user_id=user_id,
             limit=limit
         )
-        return history
+        return JSONResponse(content=history)
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Error getting chat history: {error_msg}")
-        raise HTTPException(status_code=500, detail={"error": "history_error", "message": error_msg})
+        logger.error(f"Error getting chat history: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "server_error", "message": str(e)}
+        )
 
 @app.get("/api/chat/message/{user_id}/{message_id}")
 async def get_message(user_id: str, message_id: str):
@@ -152,33 +142,42 @@ async def get_message(user_id: str, message_id: str):
             user_id=user_id,
             message_id=message_id
         )
-        return message
+        return JSONResponse(content=message)
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Error getting message: {error_msg}")
-        raise HTTPException(status_code=500, detail={"error": "message_error", "message": error_msg})
+        logger.error(f"Error getting message: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "server_error", "message": str(e)}
+        )
 
 @app.delete("/api/thread/{user_id}")
 async def delete_user_thread(user_id: str):
     """Delete a user's thread"""
     try:
         await assistant_manager.delete_thread(user_id)
-        return {"status": "success", "message": f"Thread deleted for user {user_id}"}
+        return JSONResponse(content={"status": "success", "message": f"Thread deleted for user {user_id}"})
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Error deleting thread: {error_msg}")
-        raise HTTPException(status_code=500, detail={"error": "delete_error", "message": error_msg})
+        logger.error(f"Error deleting thread: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "server_error", "message": str(e)}
+        )
 
 @app.post("/api/chat/stream")
 async def chat_with_assistant_stream(request: ChatRequest):
     """Chat with the assistant with streaming response"""
     try:
         async def generate_responses():
-            async for response in assistant_manager.send_message_stream(
-                user_id=request.user_id,
-                message=request.message
-            ):
-                yield f"data: {json.dumps(response)}\n\n"
+            try:
+                async for response in assistant_manager.send_message_stream(
+                    user_id=request.user_id,
+                    message=request.message
+                ):
+                    yield f"data: {json.dumps(response)}\n\n"
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Error in stream generation: {error_msg}")
+                yield f"data: {json.dumps({'error': 'stream_error', 'message': error_msg})}\n\n"
                 
         return StreamingResponse(
             generate_responses(),
@@ -187,7 +186,10 @@ async def chat_with_assistant_stream(request: ChatRequest):
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Error in chat stream endpoint: {error_msg}")
-        raise HTTPException(status_code=500, detail={"error": "stream_error", "message": error_msg})
+        return JSONResponse(
+            status_code=500,
+            content={"error": "server_error", "message": error_msg}
+        )
 
 # For local development
 if __name__ == "__main__":
