@@ -8,12 +8,20 @@
                 "runtime": "python3.9",
                 "buildCommand": "chmod +x vercel_build.sh && ./vercel_build.sh"
             }
+        },
+        {
+            "src": "index.html",
+            "use": "@vercel/static"
         }
     ],
     "routes": [
         {
-            "src": "/(.*)",
+            "src": "/api/(.*)",
             "dest": "main.py"
+        },
+        {
+            "src": "/",
+            "dest": "index.html"
         }
     ]
 } 
